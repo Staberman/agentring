@@ -91,7 +91,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Update the calling device's FCM registration token. */
+        /**
+         * Update the calling device's push registration token(s).
+         * @description Despite the path, this is the push-token update endpoint for every
+         *     platform. Android devices send `fcm_token`; iOS devices send
+         *     `apns_voip_token` and/or `apns_token`. At least one field is required and
+         *     fields that are omitted are left unchanged. `400` if the token kind does
+         *     not match the device's platform.
+         */
         post: operations["updateFcmToken"];
         delete?: never;
         options?: never;
@@ -493,7 +500,11 @@ export interface components {
             version: string;
             agent_name: string;
             agent_online: boolean;
-            /** @example fcm */
+            /**
+             * @description Configured push providers, joined with "+", or "none".
+             * @example fcm
+             * @example fcm+apns
+             */
             push_provider: string;
             /** @description Only returned to the agent. */
             device_count?: number;
@@ -522,11 +533,15 @@ export interface components {
         };
         PairRequest: {
             pairing_token: string;
-            /** @description May be omitted if not yet available; send later via /v1/device/fcm. */
+            /** @description Android only (`400` for iOS). May be omitted if not yet available; send later via /v1/device/fcm. */
             fcm_token?: string;
+            /** @description iOS only (`400` for Android). PushKit (VoIP) token, hex; rings the phone for `call.invite`. May be omitted if not yet available; send later via /v1/device/fcm. */
+            apns_voip_token?: string;
+            /** @description iOS only (`400` for Android). Regular APNs token, hex; used for `msg.new` alerts. Optional. */
+            apns_token?: string;
             device_name: string;
             /** @enum {string} */
-            platform: "android";
+            platform: "android" | "ios";
             app_version?: string;
         };
         PairResponse: {
@@ -542,9 +557,19 @@ export interface components {
          * @description How the app should register for push. Lets one prebuilt APK work with
          *     any user's own Firebase project: the app initialises Firebase at
          *     runtime with these public client values instead of a compiled-in
-         *     google-services.json. `null` when the relay has no push configured.
+         *     google-services.json. `null` when the relay has no push configured for
+         *     the device's platform. For iOS the relay returns `provider: apns` with
+         *     the APNs environment it signs for (the app's own bundle id and
+         *     entitlements decide its token's environment; this lets it warn on a mismatch).
          */
         PushConfig: null | {
+            /** @constant */
+            provider: "apns";
+            apns: {
+                /** @enum {string} */
+                environment: "sandbox" | "production";
+            };
+        } | {
             /** @constant */
             provider: "fcm";
             fcm: {
@@ -560,7 +585,7 @@ export interface components {
             device_id: components["schemas"]["DeviceId"];
             name: string;
             /** @enum {string} */
-            platform: "android";
+            platform: "android" | "ios";
             app_version?: string;
             created_at: components["schemas"]["Timestamp"];
             last_seen_at?: components["schemas"]["Timestamp"];
@@ -819,7 +844,8 @@ export interface components {
             type: "ws.hello";
         };
         /**
-         * @description The FCM `data` map (all values are strings). `event` is the compact JSON
+         * @description The FCM `data` map (all values are strings); for APNs the same four keys
+         *     are top-level custom keys of the payload. `event` is the compact JSON
          *     of an `Event`; `sig` = base64url(HMAC-SHA256(push_secret, event)).
          */
         PushData: {
@@ -1018,7 +1044,12 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    fcm_token: string;
+                    /** @description Android only. */
+                    fcm_token?: string;
+                    /** @description iOS only. PushKit token */
+                    apns_voip_token?: string;
+                    /** @description iOS only. Regular APNs token */
+                    apns_token?: string;
                 };
             };
         };

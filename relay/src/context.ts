@@ -18,6 +18,8 @@ export interface Ctx {
   events: EventLog;
   relayId: string;
   pushConfig: PushConfig;
+  /** What an iOS device gets as `push_config` (null when APNs is not configured). */
+  apnsPushConfig: PushConfig;
   pushProviderName: string;
   hub: WsHub;
   /** Undefined when LiveKit isn't configured: calls are then unavailable. */

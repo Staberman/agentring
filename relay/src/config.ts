@@ -8,6 +8,16 @@ export interface FcmClientConfig {
   sender_id: string;
 }
 
+export interface ApnsConfig {
+  /** `.p8` signing key downloaded from the Apple Developer portal. */
+  keyFile: string;
+  keyId: string;
+  teamId: string;
+  /** The iOS app's bundle id; the topic is this (alerts) or `<bundle>.voip` (VoIP pushes). */
+  bundleId: string;
+  environment: "sandbox" | "production";
+}
+
 export interface Config {
   host: string;
   port: number;
@@ -21,6 +31,8 @@ export interface Config {
   trustedProxies?: number;
   insecureDev: boolean;
   livekit?: LiveKitConfig;
+  /** Optional: iOS push through APNs with the self-hoster's own Apple key. */
+  apns?: ApnsConfig;
   fcm?: {
     serviceAccountFile: string;
     client: FcmClientConfig;
@@ -91,6 +103,36 @@ function ringTimeoutS(value: string): number {
   return Number(value);
 }
 
+/** APNs is optional: no APNS_* variables leaves iOS push off; setting any of them requires the full set. */
+export function loadApnsConfig(): ApnsConfig | undefined {
+  const names = ["APNS_KEY_FILE", "APNS_KEY_ID", "APNS_TEAM_ID", "APNS_BUNDLE_ID"] as const;
+  const environment = env("APNS_ENV");
+  if (!names.some((n) => env(n)) && !environment) return undefined;
+  const missing = names.filter((n) => !env(n));
+  if (missing.length > 0) {
+    throw new Error(`Set ${missing.join(", ")} to enable iOS push (all of ${names.join(", ")} are required; APNS_ENV is optional)`);
+  }
+  const [keyFile, keyId, teamId, bundleId] = names.map((n) => env(n)!) as [string, string, string, string];
+  if (environment !== undefined && environment !== "sandbox" && environment !== "production") {
+    throw new Error(`APNS_ENV must be "sandbox" or "production" (got ${environment})`);
+  }
+  // Apple key ids and team ids are 10 characters, letters and digits.
+  for (const [name, value] of [["APNS_KEY_ID", keyId], ["APNS_TEAM_ID", teamId]] as const) {
+    if (!/^[A-Z0-9]{10}$/i.test(value)) throw new Error(`${name} must be 10 letters/digits as shown in the Apple Developer portal (got ${value})`);
+  }
+  if (!/^[A-Za-z0-9.-]+$/.test(bundleId)) throw new Error(`APNS_BUNDLE_ID must be a bundle identifier such as com.example.agentring (got ${bundleId})`);
+  let pem: string;
+  try {
+    pem = readFileSync(keyFile, "utf8");
+  } catch (e) {
+    throw new Error(`APNS_KEY_FILE ${keyFile} cannot be read: ${(e as Error).message}`);
+  }
+  if (!pem.includes("-----BEGIN PRIVATE KEY-----")) {
+    throw new Error(`APNS_KEY_FILE ${keyFile} is not a .p8 key (expected a PKCS#8 "BEGIN PRIVATE KEY" PEM)`);
+  }
+  return { keyFile, keyId, teamId, bundleId, environment: environment ?? "production" };
+}
+
 export function loadConfig(): Config {
   const dataDir = env("AGENTRING_DATA_DIR", "./data")!;
   const port = Number(env("PORT", "8080"));
@@ -147,6 +189,7 @@ export function loadConfig(): Config {
     trustedProxies: trustedProxies(env("AGENTRING_TRUSTED_PROXIES", "1")!),
     insecureDev,
     fcm,
+    apns: loadApnsConfig(),
     livekit,
   };
 }

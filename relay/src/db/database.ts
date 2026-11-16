@@ -78,6 +78,11 @@ const MIGRATIONS: string[] = [
   -- Targeted calls: JSON array of the device ids the call rings; NULL = every paired phone.
   ALTER TABLE calls ADD COLUMN device_ids TEXT;
   `,
+  `
+  -- iOS: PushKit (VoIP) token rings the phone, the regular APNs token carries message alerts.
+  ALTER TABLE devices ADD COLUMN apns_voip_token TEXT;
+  ALTER TABLE devices ADD COLUMN apns_token TEXT;
+  `,
 ];
 
 export type Db = DatabaseSync;

@@ -53,14 +53,47 @@ export function testConfig(over: Partial<Config> = {}): Config {
 
 export const AGENT = { authorization: "Bearer ak_test_key" };
 
-export async function setup(over: Partial<Config> = {}): Promise<BuiltApp & { push: FakePush; livekit: FakeLiveKit }> {
+export async function setup(
+  over: Partial<Config> = {},
+): Promise<BuiltApp & { push: FakePush; apns: FakePush; livekit: FakeLiveKit }> {
   const push = new FakePush();
+  const apns = new FakePush();
   const livekit = new FakeLiveKit();
-  const built = await buildApp(testConfig(over), { logger: false, pushProvider: push, livekit });
-  return { ...built, push, livekit };
+  // The fake APNs provider is injected only when a test asks for iOS push by setting `apns` in the config.
+  const built = await buildApp(testConfig(over), { logger: false, pushProvider: push, apnsProvider: over.apns ? apns : undefined, livekit });
+  return { ...built, push, apns, livekit };
 }
 
 /** Creates a pairing token and redeems it; returns the device credentials. */
+export const TEST_APNS = {
+  keyFile: "/dev/null",
+  keyId: "ABC123DEFG",
+  teamId: "TEAM123456",
+  bundleId: "dev.example.agentring",
+  environment: "sandbox",
+} as const;
+
+/** Pairs an iOS device (VoIP token, and optionally the regular APNs token). */
+export async function pairIosDevice(b: BuiltApp, name = "iPhone", tokens: { apns_voip_token?: string; apns_token?: string } = { apns_voip_token: "aa11", apns_token: "bb22" }) {
+  const t = await b.app.inject({ method: "POST", url: "/v1/pairing-tokens", headers: AGENT });
+  const { pairing_token } = t.json();
+  const r = await b.app.inject({
+    method: "POST",
+    url: "/v1/pair",
+    payload: { pairing_token, device_name: name, platform: "ios", ...tokens },
+  });
+  if (r.statusCode !== 201) throw new Error(`pair failed: ${r.body}`);
+  const body = r.json();
+  return { ...body, headers: { authorization: `Bearer ${body.device_jwt}` } } as {
+    device_id: string;
+    device_jwt: string;
+    push_secret: string;
+    relay_id: string;
+    push_config: unknown;
+    headers: { authorization: string };
+  };
+}
+
 export async function pairDevice(b: BuiltApp, name = "Pixel", fcm_token: string | undefined = "fcm-tok-1") {
   const t = await b.app.inject({ method: "POST", url: "/v1/pairing-tokens", headers: AGENT });
   const { pairing_token } = t.json();

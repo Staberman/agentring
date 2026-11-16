@@ -104,16 +104,17 @@ only the agent and the phones it targets, on the WebSocket (live and replay),
 over FCM and in `GET /v1/events`. Because of that a page of `GET /v1/events` can
 hold fewer events than `limit`; page on its `next_after_seq`.
 
-### Push (FCM)
+### Push (FCM and APNs)
 
 Sent through the `PushProvider` interface:
 
 ```ts
 interface PushProvider {
-  readonly name: string;                       // "fcm" | "unifiedpush" (future)
+  readonly name: string;                       // "fcm" | "apns" | "unifiedpush" (future)
   send(target: PushTarget, payload: PushPayload, opts: PushOptions): Promise<PushResult>;
 }
-interface PushOptions { ttlSeconds: number; highPriority: boolean; collapseKey?: string }
+interface PushOptions { ttlSeconds: number; highPriority: boolean; collapseKey?: string;
+                        apns?: { pushType: "voip" | "alert"; alert?: { title: string; body: string } } }
 type PushResult = { ok: true } | { ok: false; unregistered: boolean; error: string };
 ```
 
@@ -157,6 +158,16 @@ checks the call (`GET /v1/calls/{call_id}`) before offering anything.
 An `UNREGISTERED` FCM response clears the device's token (the app will
 re-send it via `POST /v1/device/fcm` on next start/refresh).
 
+**iOS (APNs).** iOS devices (`platform: ios`) register `apns_voip_token` and
+optionally `apns_token` instead of `fcm_token` (pairing and `POST /v1/device/fcm`
+accept them; the wrong kind for the platform is `400`) and are pushed through
+`ApnsProvider`, with the same `v`/`relay_id`/`event`/`sig` envelope as top-level
+custom keys. Only two events are pushed: `call.invite` as a VoIP push and
+`msg.new` as an alert push (needs `apns_token`). **No other event is ever sent as
+a VoIP push**: iOS kills apps that receive a VoIP push without reporting a call,
+so accept/decline/end/missed/canceled reach an iOS phone over the WebSocket only.
+Setup and the details are in [ios.md](ios.md).
+
 ## Flows
 
 ### Pairing
@@ -170,6 +181,8 @@ app scans QR
        → { device_id, device_jwt, push_secret, relay_id, agent_name, push_config }
      push_config = the user's Firebase client values (or null): the app initialises
      Firebase at runtime, so one prebuilt APK works with anyone's Firebase project
+     (iOS: platform "ios" sends apns_voip_token/apns_token and gets
+     { provider: "apns", apns: { environment } } instead; see ios.md)
      relay: token single-use (stored hashed), expires after 10 min
 app stores device_jwt + push_secret (SecretStore: AES-GCM with an Android Keystore key)
 FirebaseMessagingService.onNewToken → POST /v1/device/fcm { fcm_token }

@@ -18,21 +18,40 @@ interface DeviceRow {
   platform: string;
   app_version: string | null;
   fcm_token: string | null;
+  apns_voip_token: string | null;
+  apns_token: string | null;
   created_at: number;
   last_seen_at: number | null;
   revoked_at: number | null;
+}
+
+interface TokenUpdate {
+  fcm_token?: string;
+  apns_voip_token?: string;
+  apns_token?: string;
+}
+
+/** Android devices register FCM tokens, iOS devices APNs tokens; mixing them is a client bug. */
+function assertTokensMatchPlatform(platform: string, t: TokenUpdate): void {
+  if (platform === "ios" && t.fcm_token !== undefined) {
+    throw new ApiError(400, "invalid_request", "fcm_token is not valid for an ios device");
+  }
+  if (platform !== "ios" && (t.apns_voip_token !== undefined || t.apns_token !== undefined)) {
+    throw new ApiError(400, "invalid_request", "apns_voip_token and apns_token are only valid for an ios device");
+  }
 }
 
 export function deviceFromRow(r: DeviceRow): Device {
   return {
     device_id: r.device_id,
     name: r.name,
-    platform: "android",
+    platform: r.platform === "ios" ? "ios" : "android",
     ...(r.app_version ? { app_version: r.app_version } : {}),
     created_at: r.created_at,
     ...(r.last_seen_at ? { last_seen_at: r.last_seen_at } : {}),
     ...(r.revoked_at ? { revoked_at: r.revoked_at } : {}),
-    has_push_token: r.fcm_token !== null,
+    // iOS rings through the VoIP token; the regular APNs token only adds message alerts.
+    has_push_token: r.platform === "ios" ? r.apns_voip_token !== null : r.fcm_token !== null,
   };
 }
 
@@ -64,7 +83,7 @@ export function revokeDevice(ctx: Ctx, deviceId: string): void {
   const row = ctx.db.prepare("SELECT revoked_at FROM devices WHERE device_id = ?").get(deviceId);
   if (!row) throw notFound("Device");
   ctx.db
-    .prepare("UPDATE devices SET revoked_at = COALESCE(revoked_at, ?), fcm_token = NULL WHERE device_id = ?")
+    .prepare("UPDATE devices SET revoked_at = COALESCE(revoked_at, ?), fcm_token = NULL, apns_voip_token = NULL, apns_token = NULL WHERE device_id = ?")
     .run(Date.now(), deviceId);
   ctx.hub.disconnectDevice(deviceId);
   ctx.calls?.deviceRevoked(deviceId);
@@ -100,8 +119,10 @@ export function pairingRoutes(app: FastifyInstance, ctx: Ctx): void {
           properties: {
             pairing_token: { type: "string", maxLength: 128 },
             fcm_token: { type: "string", maxLength: 4096 },
+            apns_voip_token: { type: "string", pattern: "^[0-9a-fA-F]{1,200}$" },
+            apns_token: { type: "string", pattern: "^[0-9a-fA-F]{1,200}$" },
             device_name: { type: "string", minLength: 1, maxLength: 64 },
-            platform: { type: "string", enum: ["android"] },
+            platform: { type: "string", enum: ["android", "ios"] },
             app_version: { type: "string", maxLength: 32 },
           },
         },
@@ -121,6 +142,7 @@ export function pairingRoutes(app: FastifyInstance, ctx: Ctx): void {
       }
 
       const b = req.body;
+      assertTokensMatchPlatform(b.platform, b);
       checkPair(db, ctx.limits());
       // Atomically consume the token.
       const res = db
@@ -131,9 +153,20 @@ export function pairingRoutes(app: FastifyInstance, ctx: Ctx): void {
       const deviceId = newId("dev");
       const pushSecret = randomBytes(32).toString("base64url");
       db.prepare(
-        `INSERT INTO devices (device_id, name, platform, app_version, push_secret, fcm_token, created_at, last_seen_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(deviceId, b.device_name, b.platform, b.app_version ?? null, pushSecret, b.fcm_token ?? null, now, now);
+        `INSERT INTO devices (device_id, name, platform, app_version, push_secret, fcm_token, apns_voip_token, apns_token, created_at, last_seen_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        deviceId,
+        b.device_name,
+        b.platform,
+        b.app_version ?? null,
+        pushSecret,
+        b.fcm_token ?? null,
+        b.apns_voip_token ?? null,
+        b.apns_token ?? null,
+        now,
+        now,
+      );
 
       const body: Schemas["PairResponse"] = {
         device_id: deviceId,
@@ -141,14 +174,14 @@ export function pairingRoutes(app: FastifyInstance, ctx: Ctx): void {
         push_secret: pushSecret,
         relay_id: ctx.relayId,
         agent_name: ctx.cfg.agentName,
-        push_config: ctx.pushConfig,
+        push_config: b.platform === "ios" ? ctx.apnsPushConfig : ctx.pushConfig,
       };
       req.log.info({ device: deviceId, name: b.device_name }, "device paired");
       return reply.code(201).send(body);
     },
   );
 
-  app.post<{ Body: { fcm_token: string } }>(
+  app.post<{ Body: TokenUpdate }>(
     "/v1/device/fcm",
     {
       preHandler: requireAuth(ctx, "device"),
@@ -156,15 +189,26 @@ export function pairingRoutes(app: FastifyInstance, ctx: Ctx): void {
         body: {
           type: "object",
           additionalProperties: false,
-          required: ["fcm_token"],
-          properties: { fcm_token: { type: "string", minLength: 1, maxLength: 4096 } },
+          minProperties: 1,
+          properties: {
+            fcm_token: { type: "string", minLength: 1, maxLength: 4096 },
+            apns_voip_token: { type: "string", pattern: "^[0-9a-fA-F]{1,200}$" },
+            apns_token: { type: "string", pattern: "^[0-9a-fA-F]{1,200}$" },
+          },
         },
       },
     },
     async (req, reply) => {
       const p = principal(req);
       if (p.kind !== "device") throw new Error("unreachable");
-      db.prepare("UPDATE devices SET fcm_token = ? WHERE device_id = ?").run(req.body.fcm_token, p.deviceId);
+      const row = db.prepare("SELECT platform FROM devices WHERE device_id = ?").get(p.deviceId) as { platform: string } | undefined;
+      const b = req.body;
+      assertTokensMatchPlatform(row?.platform ?? "android", b);
+      // Only the fields sent are touched.
+      db.prepare(
+        `UPDATE devices SET fcm_token = COALESCE(?, fcm_token), apns_voip_token = COALESCE(?, apns_voip_token),
+           apns_token = COALESCE(?, apns_token) WHERE device_id = ?`,
+      ).run(b.fcm_token ?? null, b.apns_voip_token ?? null, b.apns_token ?? null, p.deviceId);
       return reply.code(204).send();
     },
   );

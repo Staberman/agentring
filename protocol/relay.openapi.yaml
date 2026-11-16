@@ -116,7 +116,13 @@ paths:
     post:
       tags: [devices]
       operationId: updateFcmToken
-      summary: Update the calling device's FCM registration token.
+      summary: Update the calling device's push registration token(s).
+      description: |
+        Despite the path, this is the push-token update endpoint for every
+        platform. Android devices send `fcm_token`; iOS devices send
+        `apns_voip_token` and/or `apns_token`. At least one field is required and
+        fields that are omitted are left unchanged. `400` if the token kind does
+        not match the device's platform.
       security: [{ deviceJwt: [] }]
       requestBody:
         required: true
@@ -125,9 +131,11 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [fcm_token]
+              minProperties: 1
               properties:
-                fcm_token: { type: string, minLength: 1, maxLength: 4096 }
+                fcm_token: { type: string, minLength: 1, maxLength: 4096, description: Android only. }
+                apns_voip_token: { type: string, pattern: "^[0-9a-fA-F]{1,200}$", description: iOS only. PushKit token, hex. }
+                apns_token: { type: string, pattern: "^[0-9a-fA-F]{1,200}$", description: iOS only. Regular APNs token, hex. }
       responses:
         "204": { description: Updated. }
         "400": { $ref: "#/components/responses/BadRequest" }
@@ -699,7 +707,7 @@ components:
         version: { type: string }
         agent_name: { type: string }
         agent_online: { type: boolean }
-        push_provider: { type: string, examples: [fcm] }
+        push_provider: { type: string, description: 'Configured push providers, joined with "+", or "none".', examples: [fcm, fcm+apns] }
         device_count:
           description: Only returned to the agent.
           type: integer
@@ -739,11 +747,19 @@ components:
       properties:
         pairing_token: { type: string }
         fcm_token:
-          description: May be omitted if not yet available; send later via /v1/device/fcm.
+          description: Android only (`400` for iOS). May be omitted if not yet available; send later via /v1/device/fcm.
           type: string
           maxLength: 4096
+        apns_voip_token:
+          description: iOS only (`400` for Android). PushKit (VoIP) token, hex; rings the phone for `call.invite`. May be omitted if not yet available; send later via /v1/device/fcm.
+          type: string
+          pattern: "^[0-9a-fA-F]{1,200}$"
+        apns_token:
+          description: iOS only (`400` for Android). Regular APNs token, hex; used for `msg.new` alerts. Optional.
+          type: string
+          pattern: "^[0-9a-fA-F]{1,200}$"
         device_name: { type: string, minLength: 1, maxLength: 64 }
-        platform: { type: string, enum: [android] }
+        platform: { type: string, enum: [android, ios] }
         app_version: { type: string, maxLength: 32 }
     PairResponse:
       type: object
@@ -762,9 +778,21 @@ components:
         How the app should register for push. Lets one prebuilt APK work with
         any user's own Firebase project: the app initialises Firebase at
         runtime with these public client values instead of a compiled-in
-        google-services.json. `null` when the relay has no push configured.
+        google-services.json. `null` when the relay has no push configured for
+        the device's platform. For iOS the relay returns `provider: apns` with
+        the APNs environment it signs for (the app's own bundle id and
+        entitlements decide its token's environment; this lets it warn on a mismatch).
       oneOf:
         - type: "null"
+        - type: object
+          required: [provider, apns]
+          properties:
+            provider: { const: apns }
+            apns:
+              type: object
+              required: [environment]
+              properties:
+                environment: { type: string, enum: [sandbox, production] }
         - type: object
           required: [provider, fcm]
           properties:
@@ -783,7 +811,7 @@ components:
       properties:
         device_id: { $ref: "#/components/schemas/DeviceId" }
         name: { type: string }
-        platform: { type: string, enum: [android] }
+        platform: { type: string, enum: [android, ios] }
         app_version: { type: string }
         created_at: { $ref: "#/components/schemas/Timestamp" }
         last_seen_at: { $ref: "#/components/schemas/Timestamp" }
@@ -1074,7 +1102,8 @@ components:
     # ---------- push ----------
     PushData:
       description: |
-        The FCM `data` map (all values are strings). `event` is the compact JSON
+        The FCM `data` map (all values are strings); for APNs the same four keys
+        are top-level custom keys of the payload. `event` is the compact JSON
         of an `Event`; `sig` = base64url(HMAC-SHA256(push_secret, event)).
       type: object
       required: [v, relay_id, event, sig]

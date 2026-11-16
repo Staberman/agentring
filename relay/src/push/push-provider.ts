@@ -1,6 +1,6 @@
 /**
- * Transport-agnostic push interface. FCM is the only implementation in F1;
- * UnifiedPush can be added later without touching the dispatcher.
+ * Transport-agnostic push interface. FCM (Android) and APNs (iOS) are the
+ * implementations; UnifiedPush can be added later without touching the dispatcher.
  */
 export interface PushTarget {
   deviceId: string;
@@ -14,6 +14,14 @@ export interface PushOptions {
   ttlSeconds: number;
   highPriority: boolean;
   collapseKey?: string;
+  /** APNs only: which kind of push to send and, for alerts, what to show. */
+  apns?: ApnsOptions;
+}
+
+export interface ApnsOptions {
+  /** `voip` (PushKit, must be reported to CallKit) or `alert` (regular notification). */
+  pushType: "voip" | "alert";
+  alert?: { title: string; body: string };
 }
 
 export type PushResult = { ok: true } | { ok: false; unregistered: boolean; error: string };

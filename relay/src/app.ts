@@ -14,6 +14,7 @@ import { LiveKitServer, type LiveKitService } from "./livekit.js";
 import type { PushConfig } from "./protocol.js";
 import { type Limits, UNLIMITED } from "./quota.js";
 import { PushDispatcher } from "./push/dispatcher.js";
+import { ApnsProvider } from "./push/apns.js";
 import { FcmProvider } from "./push/fcm.js";
 import type { PushProvider } from "./push/push-provider.js";
 import { Calls, callRoutes, targetsOf } from "./routes/calls.js";
@@ -26,6 +27,8 @@ export interface BuildOptions {
   logger?: FastifyServerOptions["logger"];
   /** Inject a push provider (tests). Defaults to FCM when configured. */
   pushProvider?: PushProvider;
+  /** Inject an APNs provider (tests, hub). Defaults to APNs when configured (APNS_* variables). */
+  apnsProvider?: PushProvider;
   /** Inject LiveKit (tests). Defaults to the configured server, if any. */
   livekit?: LiveKitService;
   /** A pino-compatible logger to use instead of creating one (hub mode: a child per tenant). */
@@ -103,8 +106,11 @@ export async function buildApp(cfg: Config, opts: BuildOptions = {}): Promise<Bu
 
   const provider: PushProvider | undefined =
     opts.pushProvider ?? (cfg.fcm ? new FcmProvider(cfg.fcm.serviceAccountFile, cfg.fcm.apiBase) : undefined);
+  const ownApns = !opts.apnsProvider && cfg.apns ? ApnsProvider.fromConfig(cfg.apns) : undefined;
+  const apns: PushProvider | undefined = opts.apnsProvider ?? ownApns;
   const pushConfig: PushConfig = cfg.fcm ? { provider: "fcm", fcm: cfg.fcm.client } : null;
-  if (!provider && !opts.tenant) app.log.warn("Push is not configured: the phone will only get events while the app is open");
+  const apnsPushConfig: PushConfig = cfg.apns ? { provider: "apns", apns: { environment: cfg.apns.environment } } : null;
+  if (!provider && !apns && !opts.tenant) app.log.warn("Push is not configured: the phone will only get events while the app is open");
 
   const events = new EventLog(db);
   const ctx: Ctx = {
@@ -115,7 +121,8 @@ export async function buildApp(cfg: Config, opts: BuildOptions = {}): Promise<Bu
     events,
     relayId,
     pushConfig,
-    pushProviderName: provider?.name ?? "none",
+    apnsPushConfig,
+    pushProviderName: [provider?.name, apns?.name].filter(Boolean).join("+") || "none",
     hub: new WsHub(events),
     livekit: opts.livekit ?? (cfg.livekit ? new LiveKitServer(cfg.livekit) : undefined),
     limits: opts.tenant?.limits ?? (() => UNLIMITED),
@@ -129,7 +136,7 @@ export async function buildApp(cfg: Config, opts: BuildOptions = {}): Promise<Bu
   const dispatcher = new PushDispatcher(db, provider, relayId, app.log, (id) => {
     const c = calls.get(id);
     return c && { direction: c.direction, device_ids: targetsOf(c) };
-  });
+  }, apns, cfg.agentName);
   events.onEvent((e) => dispatcher.handle(e));
 
   app.setErrorHandler((err, req, reply) => {
@@ -156,11 +163,14 @@ export async function buildApp(cfg: Config, opts: BuildOptions = {}): Promise<Bu
   callRoutes(app, ctx, calls);
   calls.resume();
   // Fetch the FCM access token now so the first call's push doesn't wait for it.
-  void provider?.prepare?.().catch((err: unknown) => app.log.warn({ err }, "push provider warm-up failed"));
+  for (const p of [provider, apns]) {
+    void p?.prepare?.().catch((err: unknown) => app.log.warn({ err }, "push provider warm-up failed"));
+  }
   wsRoutes(app, ctx);
 
   app.addHook("onClose", async () => {
     calls.stop();
+    ownApns?.close();
     ctx.hub.closeAll();
     db.close();
   });
