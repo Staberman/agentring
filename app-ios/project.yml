@@ -1,0 +1,78 @@
+name: AgentRing
+options:
+  bundleIdPrefix: com.staberman
+  deploymentTarget:
+    iOS: "17.0"
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: 7DK3TY386Q
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+packages:
+  LiveKit:
+    url: https://github.com/livekit/client-sdk-swift
+    from: 2.19.0
+targets:
+  AgentRingCore:
+    type: framework
+    supportedDestinations: [iOS, macOS]
+    sources: [Core]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.staberman.agentring.core
+        GENERATE_INFOPLIST_FILE: YES
+        DEFINES_MODULE: YES
+  AgentRing:
+    type: application
+    platform: iOS
+    sources: [App]
+    dependencies:
+      - target: AgentRingCore
+      - package: LiveKit
+    entitlements:
+      path: App/AgentRing.entitlements
+      properties:
+        aps-environment: development
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: agentring
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIBackgroundModes: [voip, audio, remote-notification]
+        NSMicrophoneUsageDescription: agentring needs the microphone so you can talk to your agent during a call.
+        NSCameraUsageDescription: agentring uses the camera to scan the pairing QR code.
+        NSLocalNetworkUsageDescription: agentring connects to a relay on your local network during development.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.staberman.agentring
+        TARGETED_DEVICE_FAMILY: "1"
+  AgentRingCoreTests:
+    type: bundle.unit-test
+    supportedDestinations: [iOS, macOS]
+    sources: [Tests]
+    dependencies:
+      - target: AgentRingCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.staberman.agentring.coretests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  AgentRing:
+    build:
+      targets:
+        AgentRing: all
+    test:
+      targets: [AgentRingCoreTests]
+  AgentRingCore:
+    build:
+      targets:
+        AgentRingCore: all
+    test:
+      targets: [AgentRingCoreTests]
