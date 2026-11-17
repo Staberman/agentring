@@ -23,10 +23,10 @@ public struct QrPayload: Codable, Equatable {
     public static func parse(_ raw: String) throws -> QrPayload {
         guard let data = raw.trimmingCharacters(in: .whitespacesAndNewlines).data(using: .utf8),
               let p = try? ProtocolCoding.decoder.decode(QrPayload.self, from: data) else {
-            throw ProtocolError("This is not an agentring pairing code")
+            throw ProtocolError(coreString("This is not an agentring pairing code"))
         }
-        guard p.v == 1 else { throw ProtocolError("Unsupported pairing code version \(p.v); update the app") }
-        guard p.pairingToken.hasPrefix("pt_") else { throw ProtocolError("Invalid pairing token") }
+        guard p.v == 1 else { throw ProtocolError(coreString("Unsupported pairing code version \(p.v); update the app")) }
+        guard p.pairingToken.hasPrefix("pt_") else { throw ProtocolError(coreString("Invalid pairing token")) }
         try RelayUrlPolicy.check(p.relayUrl)
         return p
     }
@@ -65,7 +65,12 @@ public struct Call: Codable, Equatable {
     public let reason: String?
     public let priority: String
     public let agentName: String
+    public let createdAt: Int64?
+    public let answeredAt: Int64?
     public var isRinging: Bool { state == "ringing" }
+    public var isActive: Bool { state == "active" }
+    /// A call from the agent that is in progress: a phone that is not on it may join.
+    public var isJoinable: Bool { isActive && direction == "agent_to_user" }
 }
 
 public struct JoinInfo: Codable, Equatable {
@@ -87,6 +92,8 @@ public struct RelayStatus: Codable, Equatable {
     public let agentName: String
     public let agentOnline: Bool
     public let pushProvider: String
+    /// The call currently ringing or active, if any.
+    public let activeCall: Call?
 }
 
 public struct ApiErrorBody: Codable {
@@ -112,7 +119,17 @@ public struct CallInvite: Equatable {
 
 public struct CallEnd: Equatable { public let callId: String; public let by: String; public let reason: String }
 public struct CallAnswer: Equatable { public let type: String; public let callId: String; public let by: String; public let deviceId: String? }
-public struct MsgNew: Equatable { public let msgId: String; public let from: String; public let text: String; public let truncated: Bool? }
+public struct MsgNew: Equatable {
+    /// Event id (`evt_...`), used to drop replays of the same event.
+    public let id: String
+    public let ts: Int64?
+    public let msgId: String
+    public let from: String
+    public let text: String
+    public let replyTo: String?
+    public let truncated: Bool?
+}
+public struct MsgRead: Equatable { public let id: String; public let ts: Int64?; public let msgId: String }
 
 /// Relay events. Unknown types decode to `.unknown` so old apps keep working.
 public enum Event: Equatable {
@@ -122,7 +139,7 @@ public enum Event: Equatable {
     case callEnd(CallEnd)
     case callMissed(callId: String)
     case msgNew(MsgNew)
-    case msgRead(msgId: String)
+    case msgRead(MsgRead)
     case agentPresence(online: Bool)
     case wsHello(relayId: String, lastSeq: Int64)
     case unknown(type: String)
@@ -142,6 +159,8 @@ public enum Event: Equatable {
         let msgId: String?
         let from: String?
         let text: String?
+        let ts: Int64?
+        let replyTo: String?
         let truncated: Bool?
         let online: Bool?
         let relayId: String?
@@ -176,10 +195,11 @@ public enum Event: Equatable {
         case "call.missed":
             return .callMissed(callId: try need(w.callId, "call_id"))
         case "msg.new":
-            return .msgNew(MsgNew(msgId: try need(w.msgId, "msg_id"), from: try need(w.from, "from"),
-                                  text: try need(w.text, "text"), truncated: w.truncated))
+            return .msgNew(MsgNew(id: try need(w.id, "id"), ts: w.ts, msgId: try need(w.msgId, "msg_id"),
+                                  from: try need(w.from, "from"), text: try need(w.text, "text"),
+                                  replyTo: w.replyTo, truncated: w.truncated))
         case "msg.read":
-            return .msgRead(msgId: try need(w.msgId, "msg_id"))
+            return .msgRead(MsgRead(id: try need(w.id, "id"), ts: w.ts, msgId: try need(w.msgId, "msg_id")))
         case "agent.presence":
             return .agentPresence(online: try need(w.online, "online"))
         case "ws.hello":
@@ -192,5 +212,24 @@ public enum Event: Equatable {
     /// `seq` of an event JSON, if present (used to resume the WebSocket).
     public static func seq(of json: Data) -> Int64? {
         (try? ProtocolCoding.decoder.decode(Wire.self, from: json))?.seq
+    }
+}
+
+/// Reconnect timing for the relay WebSocket.
+public enum ReconnectPolicy {
+    /// A connection must last this long before the backoff starts over.
+    public static let stableSeconds: TimeInterval = 30
+    public static let maxDelaySeconds = 30.0
+
+    /// Delay before reconnect attempt number `attempts` (0-based): 1, 2, 4, 8, 16, then 30 s.
+    public static func delay(attempts: Int) -> Double {
+        min(maxDelaySeconds, Double(1 << min(max(attempts, 0), 5)))
+    }
+
+    /// Failed attempts to carry on with once a connection ended. `connectedFor` is nil when the
+    /// socket never got a frame. A short-lived connection (an accept-then-drop loop) keeps backing off.
+    public static func attempts(afterConnectionLasting connectedFor: TimeInterval?, previous: Int) -> Int {
+        guard let connectedFor, connectedFor >= stableSeconds else { return previous }
+        return 0
     }
 }

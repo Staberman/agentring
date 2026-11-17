@@ -3,14 +3,18 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var model: AppModel
+    @ObservedObject private var callState = CallManager.shared.state
 
     var body: some View {
         NavigationStack {
             if let creds = model.creds {
-                StatusView(creds: creds)
+                ChatView(store: model.messages, creds: creds)
             } else {
                 PairingView()
             }
+        }
+        .fullScreenCover(isPresented: Binding(get: { callState.call != nil }, set: { _ in })) {
+            CallView(state: callState)
         }
     }
 }
@@ -24,9 +28,9 @@ struct StatusView: View {
             Section("Paired") {
                 LabeledContent("Agent", value: creds.agentName)
                 LabeledContent("Relay", value: creds.relayUrl)
-                LabeledContent("Agent online", value: model.agentOnline.map { $0 ? "Yes" : "No" } ?? "Unknown")
+                LabeledContent("Agent online", value: model.agentOnline.map { $0 ? String(localized: "Yes") : String(localized: "No") } ?? String(localized: "Unknown"))
                 LabeledContent("Connection", value: connectionText)
-                LabeledContent("Push provider", value: model.pushProvider ?? "Unknown")
+                LabeledContent("Push provider", value: model.pushProvider ?? String(localized: "Unknown"))
             }
             Section {
                 Button("Unpair this device", role: .destructive) { model.unpair() }
@@ -35,15 +39,15 @@ struct StatusView: View {
                 Section { Text(e).foregroundStyle(.red) }
             }
         }
-        .navigationTitle("agentring")
+        .navigationTitle("Settings")
         .refreshable { await model.refreshStatus() }
     }
 
     private var connectionText: String {
         switch model.socketState {
-        case .connected: "Connected"
-        case .connecting: "Connecting"
-        case .disconnected: "Disconnected"
+        case .connected: String(localized: "Connected")
+        case .connecting: String(localized: "Connecting")
+        case .disconnected: String(localized: "Disconnected")
         }
     }
 }

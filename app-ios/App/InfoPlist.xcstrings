@@ -1,0 +1,57 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "NSCameraUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "agentring uses the camera to scan the pairing QR code."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "agentring usa la cámara para escanear el código QR de vinculación."
+          }
+        }
+      }
+    },
+    "NSLocalNetworkUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "agentring connects to a relay on your local network during development."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "agentring se conecta a un relay de tu red local durante el desarrollo."
+          }
+        }
+      }
+    },
+    "NSMicrophoneUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "agentring needs the microphone so you can talk to your agent during a call."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "agentring necesita el micrófono para que puedas hablar con tu agente durante una llamada."
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

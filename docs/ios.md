@@ -67,7 +67,7 @@ because the token itself is valid; fix `APNS_ENV` and the next push goes through
 | Event | iOS push |
 |---|---|
 | `call.invite` (agent to user) | VoIP push: `apns-push-type: voip`, topic `<bundle>.voip`, priority 10, expiration = the call's `expires_at` |
-| `msg.new` (from agent) | Alert push if an `apns_token` exists: `apns-push-type: alert`, topic `<bundle>`, `mutable-content: 1`, title = agent name, body = the text (first 200 characters) |
+| `msg.new` (from agent) | Alert push if an `apns_token` exists: `apns-push-type: alert`, topic `<bundle>`, `mutable-content: 1`, `category: AGENTRING_MESSAGE` (the app registers a text-input reply action for it), title = agent name, body = the text (first 200 characters) |
 | anything else | nothing |
 
 **A VoIP push is sent for `call.invite` and for nothing else.** Since iOS 13 the

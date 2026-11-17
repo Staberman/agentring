@@ -1,0 +1,176 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "Invalid LiveKit URL": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid LiveKit URL"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "URL de LiveKit no válida"
+          }
+        }
+      }
+    },
+    "Invalid LiveKit URL scheme": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid LiveKit URL scheme"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esquema de URL de LiveKit no válido"
+          }
+        }
+      }
+    },
+    "Invalid pairing token": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid pairing token"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token de vinculación no válido"
+          }
+        }
+      }
+    },
+    "Invalid relay URL": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid relay URL"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "URL del relay no válida"
+          }
+        }
+      }
+    },
+    "LiveKit must use wss:// (ws is only allowed on a local network)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LiveKit must use wss:// (ws is only allowed on a local network)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LiveKit debe usar wss:// (ws solo se permite en una red local)"
+          }
+        }
+      }
+    },
+    "The relay URL must start with https://": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The relay URL must start with https://"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La URL del relay debe empezar con https://"
+          }
+        }
+      }
+    },
+    "The relay must use https:// (http is only allowed on a local network)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The relay must use https:// (http is only allowed on a local network)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El relay debe usar https:// (http solo se permite en una red local)"
+          }
+        }
+      }
+    },
+    "This is not an agentring pairing code": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This is not an agentring pairing code"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este no es un código de vinculación de agentring"
+          }
+        }
+      }
+    },
+    "Unsupported pairing code version %lld; update the app": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unsupported pairing code version %lld; update the app"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Versión %lld del código de vinculación no compatible; actualiza la app"
+          }
+        }
+      }
+    },
+    "not paired": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "not paired"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "no vinculado"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

@@ -5,6 +5,7 @@ options:
     iOS: "17.0"
     macOS: "14.0"
   createIntermediateGroups: true
+  developmentLanguage: en
 settings:
   base:
     SWIFT_VERSION: "5.0"
@@ -41,6 +42,7 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: agentring
+        CFBundleLocalizations: [en, es]
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIBackgroundModes: [voip, audio, remote-notification]

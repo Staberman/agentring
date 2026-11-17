@@ -15,6 +15,12 @@ public struct RelayClient {
     public let deviceJwt: String?
     private let session: URLSession
 
+    private struct EmptyBody: Encodable {}
+    private struct PostMessageBody: Encodable {
+        var text: String
+        var replyTo: String?
+        var clientMsgId: String
+    }
     private struct TokenBody: Encodable {
         var apnsVoipToken: String?
         var apnsToken: String?
@@ -44,12 +50,32 @@ public struct RelayClient {
     public func declineCall(_ id: String) async throws -> Call { try decode(await send("POST", "/v1/calls/\(id)/decline")) }
     public func endCall(_ id: String) async throws -> Call { try decode(await send("POST", "/v1/calls/\(id)/end")) }
 
+    /// `POST /v1/calls` as a device: calls the agent (`user_to_agent`). The caller gets its join info at once.
+    public func createCall() async throws -> CallWithJoin {
+        try decode(await send("POST", "/v1/calls", body: EmptyBody()))
+    }
+
+    /// One page of the history, oldest first. `after` is the last `msg_id` already known.
+    public func listMessages(after: String? = nil, limit: Int = 100) async throws -> MessagePage {
+        var path = "/v1/messages?limit=\(limit)"
+        if let after, let q = after.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) { path += "&after=\(q)" }
+        return try decode(await send("GET", path))
+    }
+
+    public func getMessage(_ id: String) async throws -> Message { try decode(await send("GET", "/v1/messages/\(id)")) }
+
+    public func postMessage(text: String, replyTo: String? = nil, clientMsgId: String) async throws -> Message {
+        try decode(await send("POST", "/v1/messages", body: PostMessageBody(text: text, replyTo: replyTo, clientMsgId: clientMsgId)))
+    }
+
+    public func markRead(_ id: String) async throws { _ = try await send("POST", "/v1/messages/\(id)/read") }
+
     public func webSocketRequest(afterSeq: Int64) throws -> URLRequest {
         guard var c = URLComponents(string: baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/v1/ws"),
-              let jwt = deviceJwt else { throw ProtocolError("not paired") }
+              let jwt = deviceJwt else { throw ProtocolError(coreString("not paired")) }
         c.scheme = (c.scheme == "https") ? "wss" : "ws"
         c.queryItems = [URLQueryItem(name: "after_seq", value: String(afterSeq))]
-        guard let url = c.url else { throw ProtocolError("Invalid relay URL") }
+        guard let url = c.url else { throw ProtocolError(coreString("Invalid relay URL")) }
         var r = URLRequest(url: url)
         r.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
         r.setValue("agentring-ios", forHTTPHeaderField: "User-Agent")
@@ -62,13 +88,13 @@ public struct RelayClient {
 
     private func send(_ method: String, _ path: String, body: (any Encodable)? = nil, auth: Bool = true) async throws -> Data {
         guard let url = URL(string: baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + path) else {
-            throw ProtocolError("Invalid relay URL")
+            throw ProtocolError(coreString("Invalid relay URL"))
         }
         var r = URLRequest(url: url, timeoutInterval: 20)
         r.httpMethod = method
         r.setValue("agentring-ios", forHTTPHeaderField: "User-Agent")
         if auth {
-            guard let jwt = deviceJwt else { throw ProtocolError("not paired") }
+            guard let jwt = deviceJwt else { throw ProtocolError(coreString("not paired")) }
             r.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
         }
         if let body {

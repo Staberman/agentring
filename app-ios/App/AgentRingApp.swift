@@ -14,9 +14,13 @@ struct AgentRingApp: App {
             ContentView()
                 .environmentObject(model)
                 .onChange(of: phase) { _, p in
+                    model.appActive = (p == .active)
                     if p == .active, model.creds != nil {
                         model.startSocket()
-                        Task { await model.refreshStatus() }
+                        Task {
+                            await model.refreshStatus()
+                            await model.refreshMessages()
+                        }
                     }
                 }
         }
@@ -37,6 +41,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, PKPushRegistryDelegate
         voipRegistry = registry
 
         UNUserNotificationCenter.current().delegate = self
+        AppModel.registerNotificationCategories()
         application.registerForRemoteNotifications()
         if AppModel.shared.creds != nil {
             AppModel.shared.requestNotificationPermission()
@@ -61,6 +66,22 @@ final class AppDelegate: NSObject, UIApplicationDelegate, PKPushRegistryDelegate
         completionHandler([.banner, .sound])
     }
 
+    /// Inline reply from a `msg.new` alert. The action does not open the app, so a background task keeps
+    /// the process alive until the relay has the message; the completion handler is called after it.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        guard response.actionIdentifier == NotificationReply.replyActionId,
+              let input = response as? UNTextInputNotificationResponse else {
+            completionHandler()
+            return
+        }
+        let userInfo = response.notification.request.content.userInfo
+        let text = input.userText
+        Task { @MainActor in
+            ReplyJob(completionHandler: completionHandler).run(userInfo: userInfo, text: text)
+        }
+    }
+
     // MARK: PushKit (call.invite)
 
     func pushRegistry(_ registry: PKPushRegistry, didUpdate pushCredentials: PKPushCredentials, for type: PKPushType) {
@@ -78,5 +99,35 @@ final class AppDelegate: NSObject, UIApplicationDelegate, PKPushRegistryDelegate
         MainActor.assumeIsolated {
             CallManager.shared.handleVoIPPush(payload: payload.dictionaryPayload, completion: completion)
         }
+    }
+}
+
+/// One notification reply: the background task and the completion handler are released exactly once,
+/// whether the reply finishes or iOS expires the task first (the send is cancelled then).
+@MainActor
+private final class ReplyJob {
+    private let completionHandler: () -> Void
+    private var work: BackgroundWork?
+    private var task: Task<Void, Never>?
+    private var finished = false
+
+    init(completionHandler: @escaping () -> Void) { self.completionHandler = completionHandler }
+
+    func run(userInfo: [AnyHashable: Any], text: String) {
+        work = BackgroundWork(name: "agentring.reply") { [self] in
+            task?.cancel()
+            finish()
+        }
+        task = Task {
+            await AppModel.shared.reply(toNotification: userInfo, text: text)
+            finish()
+        }
+    }
+
+    private func finish() {
+        guard !finished else { return }
+        finished = true
+        work?.end()
+        completionHandler()
     }
 }

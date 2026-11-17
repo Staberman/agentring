@@ -11,34 +11,34 @@ public struct ProtocolError: Error, LocalizedError, Equatable {
 public enum RelayUrlPolicy {
     public static func check(_ url: String) throws {
         guard let c = URLComponents(string: url), let host = c.host, !host.isEmpty else {
-            throw ProtocolError("Invalid relay URL")
+            throw ProtocolError(coreString("Invalid relay URL"))
         }
         switch c.scheme?.lowercased() {
         case "https":
             break
         case "http":
             guard isPrivateHost(host) else {
-                throw ProtocolError("The relay must use https:// (http is only allowed on a local network)")
+                throw ProtocolError(coreString("The relay must use https:// (http is only allowed on a local network)"))
             }
         default:
-            throw ProtocolError("The relay URL must start with https://")
+            throw ProtocolError(coreString("The relay URL must start with https://"))
         }
     }
 
     /// Same rule for the LiveKit URL the relay hands out on accept: it carries the call's join token.
     public static func checkLiveKit(_ url: String) throws {
         guard let c = URLComponents(string: url), let host = c.host, !host.isEmpty else {
-            throw ProtocolError("Invalid LiveKit URL")
+            throw ProtocolError(coreString("Invalid LiveKit URL"))
         }
         switch c.scheme?.lowercased() {
         case "wss", "https":
             break
         case "ws", "http":
             guard isPrivateHost(host) else {
-                throw ProtocolError("LiveKit must use wss:// (ws is only allowed on a local network)")
+                throw ProtocolError(coreString("LiveKit must use wss:// (ws is only allowed on a local network)"))
             }
         default:
-            throw ProtocolError("Invalid LiveKit URL scheme")
+            throw ProtocolError(coreString("Invalid LiveKit URL scheme"))
         }
     }
 

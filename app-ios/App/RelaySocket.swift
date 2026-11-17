@@ -40,7 +40,7 @@ final class RelaySocket {
 
     private func run() async {
         var attempts = 0
-        let client = RelayClient(baseUrl: creds.relayUrl, deviceJwt: creds.deviceJwt)
+        let client = creds.makeClient()
         while !Task.isCancelled {
             await onState(.connecting)
             guard let req = try? client.webSocketRequest(afterSeq: lastSeq()) else { break }
@@ -54,11 +54,15 @@ final class RelaySocket {
                 }
             }
             var helloOk = true
+            // Set on the first frame: URLSessionWebSocketTask has no "open" callback.
+            var connectedAt: Date?
             do {
                 while !Task.isCancelled {
                     let msg = try await socket.receive()
-                    if attempts != 0 { attempts = 0 }
-                    await onState(.connected)
+                    if connectedAt == nil {
+                        connectedAt = Date()
+                        await onState(.connected)
+                    }
                     let data: Data
                     switch msg {
                     case .string(let s): data = Data(s.utf8)
@@ -87,12 +91,17 @@ final class RelaySocket {
                 }
             }
             pinger.cancel()
+            let closeCode = socket.closeCode.rawValue
             socket.cancel(with: .goingAway, reason: nil)
             await onState(.disconnected)
             if !helloOk { return }
-            let base = min(30.0, Double(1 << min(attempts, 5)))
+            // The backoff only starts over after a connection that held for a while.
+            attempts = ReconnectPolicy.attempts(afterConnectionLasting: connectedAt.map { Date().timeIntervalSince($0) },
+                                                previous: attempts)
+            let delay = ReconnectPolicy.delay(attempts: attempts) * Double.random(in: 0.8...1.2)
             attempts += 1
-            try? await Task.sleep(nanoseconds: UInt64(base * Double.random(in: 0.8...1.2) * 1_000_000_000))
+            NSLog("agentring: socket closed (code \(closeCode)), reconnecting in \(String(format: "%.1f", delay)) s")
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
         }
     }
 }

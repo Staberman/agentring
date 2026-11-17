@@ -22,4 +22,7 @@ public struct Credentials: Codable, Equatable {
         self.init(deviceId: r.deviceId, deviceJwt: r.deviceJwt, pushSecret: r.pushSecret,
                   relayId: r.relayId, relayUrl: relayUrl, agentName: r.agentName)
     }
+
+    /// The relay REST client for this device.
+    public func makeClient() -> RelayClient { RelayClient(baseUrl: relayUrl, deviceJwt: deviceJwt) }
 }
