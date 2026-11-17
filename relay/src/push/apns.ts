@@ -19,6 +19,8 @@ const MAX_BYTES = { voip: 5120, alert: 4096 } as const;
  * production host (or the reverse), so clearing it would silently drop a valid device.
  */
 const DEAD_TOKEN_REASONS = new Set(["Unregistered"]);
+/** UNNotificationCategory id the iOS app registers (with a text-input reply action) for msg.new alerts. */
+export const ALERT_CATEGORY = "AGENTRING_MESSAGE";
 const HEX_TOKEN = /^[0-9a-fA-F]{1,200}$/;
 
 export interface ApnsProviderOptions {
@@ -132,7 +134,7 @@ export class ApnsProvider implements PushProvider {
     if (!HEX_TOKEN.test(target.token)) return { ok: false, unregistered: true, error: "malformed APNs device token" };
     const body = JSON.stringify(
       kind.pushType === "alert"
-        ? { aps: { alert: kind.alert ?? {}, sound: "default", "mutable-content": 1 }, ...payload }
+        ? { aps: { alert: kind.alert ?? {}, sound: "default", category: ALERT_CATEGORY, "mutable-content": 1 }, ...payload }
         : { ...payload },
     );
     if (Buffer.byteLength(body) > MAX_BYTES[kind.pushType]) {

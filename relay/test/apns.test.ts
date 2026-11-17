@@ -99,7 +99,7 @@ describe("ApnsProvider", () => {
     const h = seen[0]!.headers;
     expect(h["apns-push-type"]).toBe("alert");
     expect(h["apns-topic"]).toBe("dev.example.agentring");
-    expect(seen[0]!.body).toEqual({ aps: { alert: { title: "Claude", body: "Build finished" }, sound: "default", "mutable-content": 1 }, ...payload });
+    expect(seen[0]!.body).toEqual({ aps: { alert: { title: "Claude", body: "Build finished" }, sound: "default", category: "AGENTRING_MESSAGE", "mutable-content": 1 }, ...payload });
   });
 
   it("reports 410 and Unregistered as unregistered, but keeps BadDeviceToken (APNS_ENV mismatch) and other failures", async () => {
